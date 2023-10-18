@@ -142,6 +142,7 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
     parser.add_argument("--download_paper", type=bool, default=False, help="download paper")
+    parser.add_argument("--trans_abstract", type=bool, default=True, help="download paper")
     args = parser.parse_args()
 
     # 使用你的URL替换下面的URL
@@ -156,7 +157,7 @@ if __name__ == "__main__":
     os.makedirs(download_dir)
 
     model_path = './opus-mt-en-zh/'
-    if os.path.exists(model_path):
+    if args.trans_abstract and os.path.exists(model_path):
         from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
         tokenizer = AutoTokenizer.from_pretrained(model_path)
         model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
@@ -200,13 +201,13 @@ if __name__ == "__main__":
             if args.download_paper is True and arxiv_id is not None:
                 download_file(pdf_url, download_dir,class_type, paper_title)
 
-            if abstract is not None:
+            if abstract:
                 abstract = abstract.split('\n')[0]
                 print(f'abstract：{abstract}')
                 arxiv_file.write(f'abstract：{abstract}\n')
                 # 翻译成中文
 
-                if model is not None and tokenizer is not None:
+                if model and tokenizer:
                     try:
                         input_ids = tokenizer.encode(abstract, return_tensors="pt")
                         outputs = model.generate(input_ids=input_ids,max_length=1024)
