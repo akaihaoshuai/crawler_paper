@@ -84,6 +84,22 @@ def get_arxiv_id_v2(paper_title):
 
     return None,None
 
+def sort_dict(dict_in):
+    sorted_dict = sorted(dict_in.items(), key=lambda x: x[1], reverse=True)
+    dict_out = dict()
+    for type in sorted_dict:
+        dict_out[type[0]] = type[1]
+
+    return dict_out
+
+def save_dict2json(dict_in, data_str):
+    import json
+    jsonstr = json.dumps(dict_in,indent=2)
+    filename = open(data_str, 'w')  # dict转josn
+    filename.write(jsonstr)
+    filename.close()
+
+
 def get_abstract_from_arxiv_url(abs_url):
     response = requests.get(abs_url)
     if response.status_code == 200:

@@ -3,7 +3,10 @@ import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 import urllib.request
-from utils import scrape_table,get_arxiv_id_v2,get_abstract_from_arxiv_url,download_arxiv_paper
+from tqdm import tqdm
+import re
+import json
+from utils import scrape_table,get_arxiv_id_v2,get_abstract_from_arxiv_url,download_arxiv_paper,sort_dict,save_dict2json
 
 def translate_en2zh(model, tokenizer, abstract):
     if model and tokenizer:
@@ -11,7 +14,7 @@ def translate_en2zh(model, tokenizer, abstract):
             input_ids = tokenizer.encode(abstract, return_tensors="pt")
             outputs = model.generate(input_ids=input_ids, max_length=1024)
             chinese_abstract = tokenizer.decode(outputs[0], skip_special_tokens=True)
-            print(f'摘要：{chinese_abstract}')
+            print(f'中文：{chinese_abstract}')
             return chinese_abstract
         except:
             print("An exception occurred")
@@ -20,14 +23,26 @@ def translate_en2zh(model, tokenizer, abstract):
 
 def process_table(dataframes,args,model,tokenizer,download_dir):
     paper_num = 0
+    class_type_dict = dict()
+    from collections import Counter
+    title_key_word_c = Counter()
     # 打印每个表格的数据,从ArXiv中获取论文ID
     for i, df in enumerate(dataframes):
+        paper_num += df.shape[0] - 1
         for idx in range(1, df.shape[0], 1):
             print(f'Table: ({i}/{len(dataframes)}). row: ({idx}/{df.shape[0]}) \n')
 
             class_type = df[0][idx].replace("：", ": ").replace("/", ",")
             paper_title = df[1][idx].replace("：", ": ")
-            paper_num += 1
+
+            from string import digits
+            class_type = class_type.translate(str.maketrans('', '', digits))  # remove digits
+            if class_type in class_type_dict:
+                class_type_dict[class_type] += 1
+            else:
+                class_type_dict[class_type] = 1
+
+            title_key_word_c.update(re.split(':|：| |,', paper_title))
 
             print(f'class_type: {class_type}. \npaper name: {paper_title}')
             arxiv_file = open(f'{download_dir}{class_type.replace(": ", "_")}.txt', 'a', encoding='utf-8')
@@ -79,6 +94,9 @@ def process_table(dataframes,args,model,tokenizer,download_dir):
             arxiv_file.close()
             print("\n")
 
+    save_dict2json(sort_dict(class_type_dict),f'{download_dir}class_type.json')
+    save_dict2json(sort_dict(dict(title_key_word_c)),f'{download_dir}paper_title_vocabulary.json')
+
     return paper_num
 
 def download_iccv2023(args,model,tokenizer):
@@ -103,12 +121,13 @@ def download_from_openaccess_url(url,args,model,tokenizer,download_dir):
 
     openaccess_url = "https://openaccess.thecvf.com/"
     for idx, result in enumerate(results):  # 对于每一个论文标题
+        print(f'\npaper idx：({idx}/{len(results)})')
         temp = result.find_all('a')[0]
         paper_title = temp.text.strip().replace('：', '_')
         paper_link = openaccess_url + temp['href']
 
         arxiv_file = open(f'{download_dir}paper_list_{idx//500}.txt', 'a', encoding='utf-8')
-
+        print(f'title：{paper_title}')
         arxiv_file.write(f'\ntitle: {paper_title}\n')
         chinese_title = translate_en2zh(model, tokenizer, paper_title)
         if chinese_title is not None:
@@ -160,6 +179,7 @@ def download_from_openaccess_url(url,args,model,tokenizer,download_dir):
 
 
         paper_abstract = paper_content.find_all('div', id='abstract')[0].text.strip()
+        print(f'abstract：{paper_abstract}')
         arxiv_file.write(f'abstract：{paper_abstract}\n')
         chinese_abstract = translate_en2zh(model, tokenizer, paper_abstract)
         if chinese_abstract is not None:
@@ -210,8 +230,8 @@ def download_cvpr2021(args,model,tokenizer):
 if __name__ == "__main__":
     from argparse import ArgumentParser
     parser = ArgumentParser()
-    parser.add_argument("--download_paper", type=bool, default=False, help="download paper")
-    parser.add_argument("--download_paper_list", type=list, default=None, help="Download the specified paper, which can refer to the specified category or specified content. If None, download all")
+    parser.add_argument("--download_paper", type=bool, default=True, help="download paper")
+    parser.add_argument("--download_paper_list", type=list, default=['single image', 'single-image', 'novel view', 'novel-view'], help="Download the specified paper, which can refer to the specified category or specified content. If None, download all")
     parser.add_argument("--trans_abstract", type=bool, default=True, help="translate paper")
     args = parser.parse_args()
 
@@ -225,10 +245,9 @@ if __name__ == "__main__":
         tokenizer = None
 
     paper_num = download_iccv2023(args,model,tokenizer)
-    # paper_num = download_iccv2021(args,model,tokenizer)
-    #
-    # paper_num += download_cvpr2023(args,model,tokenizer)
-    # paper_num += download_cvpr2022(args,model,tokenizer)
-    # paper_num += download_cvpr2021(args,model,tokenizer)
+    paper_num += download_iccv2021(args,model,tokenizer)
+    paper_num += download_cvpr2023(args,model,tokenizer)
+    paper_num += download_cvpr2022(args,model,tokenizer)
+    paper_num += download_cvpr2021(args,model,tokenizer)
     print(f'paper total num: {paper_num}')
 
